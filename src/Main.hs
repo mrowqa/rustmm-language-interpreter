@@ -1,8 +1,12 @@
 module Main where
-import System.Environment
 import Control.Monad
+import System.Environment
+import System.IO
 
---import Interpreter.Parser
+import Interpreter.Eval
+import Interpreter.Parser
+import Interpreter.TypeCheck
+import Text.Megaparsec
 
 
 main :: IO ()
@@ -17,6 +21,15 @@ main = do
 
 runProgram :: String -> String -> IO ()
 runProgram fname src = do
-    --let _ = Parser.parseStr src in ()
-    putStr $ "fname: " ++ fname ++ ", src: " ++ src
+    case parseCode fname src of
+        Left err -> hPutStrLn stderr $ parseErrorPretty err
+        Right prog -> do
+            putStrLn $ show prog
+            case typeCheck prog of
+                Left err -> hPutStrLn stderr err
+                Right () -> do
+                    let (out, err) = evalProgram prog
+                    putStr out
+                    case err of Just errMsg -> hPutStrLn stderr errMsg
+                                Nothing -> return ()
 
