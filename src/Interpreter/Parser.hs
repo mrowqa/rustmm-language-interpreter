@@ -117,7 +117,7 @@ eLiteral :: Parser Exp
 eLiteral = do
       eInteger
   <|> eBool
-  <|> eUnit
+  <|> try eUnit
   <|> eVar
   <|> eTakeRef
   <|> eAssign
@@ -191,13 +191,14 @@ eAssign = do
 sFnDef :: Parser Exp
 sFnDef = do
     rword "fn"
+    mut <- optMut
     name <- identifier
     args <- parens hFnDefArgs
     let (names, types) = unzip args -- TODO args can be mutable...
     retType <- try (symbol "->" *> hType) <|> pure TUnit
     block <- eBlock
     let fn = ELitVal $ VFn (TFn types retType) names block
-    return $ ELet False name fn
+    return $ ELet mut name fn
 
 hFnDefArgs :: Parser [(Var, Type)]
 hFnDefArgs = hTypedArg `sepBy` symbol ","

@@ -5,7 +5,6 @@ import System.IO
 
 import Interpreter.Eval
 import Interpreter.Parser
-import Interpreter.TypeCheck
 import Text.Megaparsec
 
 
@@ -24,8 +23,8 @@ runProgram fname src = do
     case parseCode fname src of
         Left err -> hPutStrLn stderr $ parseErrorPretty err
         Right prog -> do
-            putStrLn $ show prog
-            case typeCheck prog of
+            -- putStrLn $ show prog
+            case staticCheck prog of
                 Left err -> hPutStrLn stderr err
                 Right () -> do
                     let (out, err) = evalProgram prog

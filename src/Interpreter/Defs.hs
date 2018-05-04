@@ -25,7 +25,7 @@ data Span = String (Int, Int) (Int, Int) -- filename, pos begin, pos end
   deriving (Show)
 
 data Exp =
-    ELet Bool Var Exp
+    ELet Bool Var Exp -- Exp tail!
   | EFnCall Exp [Exp]
   | EVar Var
   | ELitVal Value
@@ -49,17 +49,16 @@ data Value =
   | VFn Type [Var] Exp
   | VRef Loc
   deriving (Show)
-  -- pack together with Type and Mutability
 
-type Loc = Int
+type Loc = Integer
 type Store = Map Loc Value --Loc -> Value
 type Env = Map Var (Loc, Bool) --Var -> (Loc, Bool) -- is mutable
 type Var = String
 
 
 type RuntimeExc = String
-type EvalState = StateT Store (Reader Env)
-type Interpreter a = ExceptT RuntimeExc EvalState a
+type EvalState = ExceptT RuntimeExc (State Store)
+type Interpreter a = ReaderT Env EvalState a
 
 
 --updateFn :: Eq a => (a->b) -> a -> b -> (a->b)
