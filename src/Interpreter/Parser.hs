@@ -12,7 +12,7 @@ import Text.Megaparsec.Char
 import qualified Text.Megaparsec.Char.Lexer as L
 
 import Interpreter.Defs
--- import Interpreter.Primitives
+import Interpreter.Primitives
 
 
 -- based on following tutorial:
@@ -58,8 +58,7 @@ identifier = (lexeme . try) (p >>= check)
 -- </basedOn>
 
 topDef :: Parser Exp
-topDef = do
-      sFnDef
+topDef = sFnDef
 
 sExp :: Parser Exp
 sExp = do
@@ -108,7 +107,7 @@ sExpLet = do
     var <- identifier
     void $ symbol "="
     exp' <- eExp
-    return $ ELet mut var exp'
+    return $ ELet mut var exp' emptyBlock -- continuation/subexpr is shifted in block
 
 optMut :: Parser Bool
 optMut = try (rword "mut" *> pure True) <|> pure False
@@ -198,7 +197,7 @@ sFnDef = do
     retType <- try (symbol "->" *> hType) <|> pure TUnit
     block <- eBlock
     let fn = ELitVal $ VFn (TFn types retType) names block
-    return $ ELet mut name fn
+    return $ ELet mut name fn emptyBlock
 
 hFnDefArgs :: Parser [(Var, Type)]
 hFnDefArgs = hTypedArg `sepBy` symbol ","
@@ -236,7 +235,12 @@ eBlock :: Parser Exp
 eBlock = do
     let embraced = between (symbol "{") (symbol "}") -- funny, isn't it?
     exps <- embraced $ sExp `sepBy` symbol ";"
-    return $ EBlock exps
+    return $ EBlock $ shiftLets exps []
+  where shiftLets :: [Exp] -> [Exp] -> [Exp]
+        shiftLets [] acc = reverse acc
+        shiftLets (x:xs) acc = case x of
+            ELet mut name val _ -> reverse $ (ELet mut name val (EBlock $ shiftLets xs [])):acc
+            _ -> shiftLets xs (x:acc)
 
 
 langParser :: Parser Exp

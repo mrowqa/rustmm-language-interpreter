@@ -25,7 +25,7 @@ data Span = String (Int, Int) (Int, Int) -- filename, pos begin, pos end
   deriving (Show)
 
 data Exp =
-    ELet Bool Var Exp -- Exp tail!
+    ELet Bool Var Exp Exp
   | EFnCall Exp [Exp]
   | EVar Var
   | ELitVal Value
