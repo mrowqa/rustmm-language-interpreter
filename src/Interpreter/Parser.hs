@@ -72,7 +72,7 @@ eExp = do
       eLiteral
 --  <|> eIf
 --  <|> eWhile
-  <|> eFnCall
+  <|> eFnCall  -- TODO does not work
   <|> parens eExp
 
 --eExp :: Parser Exp
@@ -112,14 +112,17 @@ sExpLet = do
 optMut :: Parser Bool
 optMut = try (rword "mut" *> pure True) <|> pure False
 
+optDeref :: Parser Bool
+optDeref = try (symbol "*" *> pure True) <|> pure False
+
 eLiteral :: Parser Exp
 eLiteral = do
       eInteger
   <|> eBool
-  <|> try eUnit
+  <|> try eUnit -- should be mislead with subexpression in parenthesis
+  <|> try eAssign -- starts exactly like eVar
   <|> eVar
   <|> eTakeRef
-  <|> eAssign
   <|> eClosure
 
 eInteger :: Parser Exp
@@ -160,8 +163,9 @@ eFnCall = do
 
 eVar :: Parser Exp
 eVar = do
+    deref <- optDeref
     var <- identifier
-    return $ EVar var
+    return $ EVar deref var
 
 eTakeRef :: Parser Exp
 eTakeRef = do
@@ -174,18 +178,19 @@ eClosure :: Parser Exp
 eClosure = do
     let walled = between (symbol "|") (symbol "|")
     args <- walled hFnDefArgs
-    let (names, types) = unzip args
+    let (mut_names, types) = unzip args
     -- version with return type inference - not supported
     retType <- try (symbol "->" *> hType) <|> pure TUnit
     block <- eBlock
-    return $ ELitVal $ VFn (TFn types retType) names block
+    return $ ELitVal $ VFn (TFn types retType) mut_names block
 
 eAssign :: Parser Exp
 eAssign = do
+    deref <- optDeref
     var <- identifier
     void $ symbol "="
     exp' <- eExp
-    return $ EAssign var exp'
+    return $ EAssign deref var exp'
 
 sFnDef :: Parser Exp
 sFnDef = do
@@ -193,21 +198,22 @@ sFnDef = do
     mut <- optMut
     name <- identifier
     args <- parens hFnDefArgs
-    let (names, types) = unzip args -- TODO args can be mutable...
+    let (mut_names, types) = unzip args
     retType <- try (symbol "->" *> hType) <|> pure TUnit
     block <- eBlock
-    let fn = ELitVal $ VFn (TFn types retType) names block
+    let fn = ELitVal $ VFn (TFn types retType) mut_names block
     return $ ELet mut name fn emptyBlock
 
-hFnDefArgs :: Parser [(Var, Type)]
+hFnDefArgs :: Parser [((Bool, Var), Type)]
 hFnDefArgs = hTypedArg `sepBy` symbol ","
 
-hTypedArg :: Parser (Var, Type)
+hTypedArg :: Parser ((Bool, Var), Type)
 hTypedArg = do
+    mut <- optMut
     var <- identifier
     void $ symbol ":"
     typ <- hType
-    return $ (var, typ)
+    return $ ((mut, var), typ)
 
 hType :: Parser Type
 hType = do
@@ -258,7 +264,5 @@ parseCode = parse langParser
 -- TODO positions!
 -- TODO expressions (operators!)
 -- TODO if, while
--- TODO fn call -> mut arg
 
--- TODO typecheck
 -- TODO interpreter :(

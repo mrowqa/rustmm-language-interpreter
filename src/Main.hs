@@ -4,6 +4,7 @@ import System.Environment
 import System.IO
 
 import Interpreter.Eval
+import Interpreter.StaticChecker
 import Interpreter.Parser
 import Text.Megaparsec
 

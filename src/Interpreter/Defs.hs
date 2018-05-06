@@ -7,11 +7,17 @@ module Interpreter.Defs (
     Value(..),
     Loc,
     Store,
+    TypeStore,
     Env,
     Var,
     RuntimeExc,
     EvalState,
     Interpreter,
+    StaticCheckExc,
+    StaticCheckState,
+    StaticChecker,
+    mainFn,
+    mainFnType,
 ) where
 import Data.Map (Map)
 --import qualified Data.Map as Map
@@ -27,11 +33,11 @@ data Span = String (Int, Int) (Int, Int) -- filename, pos begin, pos end
 data Exp =
     ELet Bool Var Exp Exp
   | EFnCall Exp [Exp]
-  | EVar Var
+  | EVar Bool Var
   | ELitVal Value
   | ETakeRef Bool Var
   | EBlock [Exp]
-  | EAssign Var Exp
+  | EAssign Bool Var Exp
   deriving (Show)
 
 data Type =
@@ -46,13 +52,14 @@ data Value =
     VInt Integer
   | VBool Bool
   | VUnit
-  | VFn Type [Var] Exp
+  | VFn Type [(Bool, Var)] Exp
   | VRef Loc
   deriving (Show)
 
 type Loc = Integer
-type Store = Map Loc Value --Loc -> Value
-type Env = Map Var (Loc, Bool) --Var -> (Loc, Bool) -- is mutable
+type Store = Map Loc Value
+type TypeStore = Map Loc Type
+type Env = Map Var (Loc, Bool)
 type Var = String
 
 
@@ -60,8 +67,14 @@ type RuntimeExc = String
 type EvalState = ExceptT RuntimeExc (State Store)
 type Interpreter a = ReaderT Env EvalState a
 
+type StaticCheckExc = String
+type StaticCheckState = ExceptT StaticCheckExc (State TypeStore)
+type StaticChecker a = ReaderT Env StaticCheckState a
 
---updateFn :: Eq a => (a->b) -> a -> b -> (a->b)
---updateFn ro x y x' | x == x' = y
---                   | otherwise = ro x
+
+mainFn :: Var
+mainFn = "main"
+
+mainFnType :: Type
+mainFnType = TFn [] TUnit
 
