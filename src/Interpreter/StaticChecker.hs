@@ -4,6 +4,7 @@ module Interpreter.StaticChecker (
     staticCheck,
 ) where
 import Interpreter.Defs
+import Interpreter.Eval  -- for builtins
 import qualified Data.Map as Map
 import Control.Monad.Except
 import Control.Monad.State
@@ -23,7 +24,8 @@ nextId = do
 
 staticCheckImpl :: Exp -> StaticChecker ()
 staticCheckImpl (EBlock defs) = do
-    env <- initTopDefs defs
+    bltnEnv <- initBuiltIns
+    env <- withReaderT (Map.union bltnEnv) $ initTopDefs defs
     maybe_main <- withReaderT (Map.union env) (getVar mainFn)
     case maybe_main of
         Nothing -> throwError $ "Error: main function not defined"
@@ -35,6 +37,28 @@ staticCheckImpl (EBlock defs) = do
                             then error "unreachable"
                             else return ()
 staticCheckImpl _ = error "unreachable"
+
+initBuiltIns :: StaticChecker StaticCheckEnv
+initBuiltIns = helper builtInsRegister
+  where helper :: [(Var, Value)] -> StaticChecker StaticCheckEnv
+        helper [] = ask
+        helper ((name, val):vs) = do
+            l <- lift $ nextId
+            lift $ modify (Map.insert l $ typeOf val)
+            env <- helper vs
+            return $ Map.insert name (l, False) env
+
+initTopDefs :: [Exp] -> StaticChecker StaticCheckEnv
+initTopDefs [] = ask
+initTopDefs (x:xs) = do
+    let (ELet mut name (ELitVal val) _) = x
+    l <- lift $ nextId
+    lift $ modify (Map.insert l $ typeOf val)
+    env <- initTopDefs xs
+    case Map.lookup name env of
+        Just _ ->  throwError $ "Error: function named " ++ name ++ " already defined!"
+        Nothing -> return $ Map.insert name (l, mut) env
+
 
 checkSingleExp :: Exp -> StaticChecker Type
 checkSingleExp (ELet mut name exp' cont) = do
@@ -61,13 +85,13 @@ checkSingleExp (EVar deref var) = do
 
 checkSingleExp (ELitVal val) = do
     case val of
-        VFn (TFn args_t ret_t) vars body -> do
+        VFn valType@(TFn args_t ret_t) vars body -> do
             args_env <- argsEnv vars args_t  -- TODO rehandle error to add info about position
             ret_t' <- withReaderT (Map.union args_env) $ checkSingleExp body
-            if ret_t == ret_t' then return ret_t
+            if ret_t == ret_t' then return valType
                                else throwError $ "Error: function declares to return " ++ show ret_t ++ ", but last expression is of type " ++ show ret_t'
         _ -> return $ typeOf val
-  where argsEnv :: [(Bool, Var)] -> [Type] -> StaticChecker Env
+  where argsEnv :: [(Bool, Var)] -> [Type] -> StaticChecker StaticCheckEnv
         argsEnv [] [] = return Map.empty
         argsEnv ((mut, name):vs) (t:ts) = do
             l <- lift $ nextId
@@ -103,12 +127,14 @@ checkSingleExp (EAssign deref var exp') = do
     maybe_var <- getVar var
     case maybe_var of
         Nothing -> throwError $ "Error: undefined variable " ++ var
-        Just (_,False,_) -> throwError $ "Error: variable " ++ var ++ " is immutable"
+        Just (_,False,_) -> throwError $ "Error: variable " ++ var ++ " is immutable"  -- TODO allow immutable refs to mutable vars
         Just (_,_,t') -> do
             case (deref, t') of
                 (True, TRef True t'') | t == t'' -> return TUnit
                 (False, _) | t == t' -> return TUnit
                 _ -> throwError $ "Error: variable " ++ var ++ " is of type " ++ show t' ++ " and tried to assign value of type " ++ show t ++ (if deref then " (while derefencing the variable)" else "")
+
+checkSingleExp (EBuiltIn _) = error "unreachable"
 
 
 getVar :: Var -> StaticChecker (Maybe (Loc, Bool, Type))
@@ -127,23 +153,14 @@ checkMultipleExp (x:xs) = do
     return (t:ts)
 
 
-initTopDefs :: [Exp] -> StaticChecker Env
-initTopDefs [] = return Map.empty
-initTopDefs (x:xs) = do
-    let (ELet mut name (ELitVal val) _) = x
-    l <- lift $ nextId
-    lift $ modify (Map.insert l $ typeOf val)
-    env <- initTopDefs xs
-    case Map.lookup name env of
-        Just _ ->  throwError $ "Error: function named " ++ name ++ " already defined!"
-        Nothing -> return $ Map.insert name (l, mut) env
-
 typeOf :: Value -> Type
 typeOf (VInt _) = TInt
 typeOf (VBool _) = TBool
 typeOf VUnit = TUnit
 typeOf (VFn t _ _) = t
 typeOf (VRef _) = error "unreachable"  -- literal can't be VRef with internal reference
+typeOf (VString _) = error "unreachable"  -- used only for stdout during eval
 
 -- TODO tests (* for each error msg)
+-- TODO check variable naming convention!
 

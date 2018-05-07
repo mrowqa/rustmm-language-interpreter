@@ -7,8 +7,9 @@ module Interpreter.Defs (
     Value(..),
     Loc,
     Store,
-    TypeStore,
     Env,
+    StaticCheckStore,
+    StaticCheckEnv,
     Var,
     RuntimeExc,
     EvalState,
@@ -38,7 +39,8 @@ data Exp =
   | ETakeRef Bool Var
   | EBlock [Exp]
   | EAssign Bool Var Exp
-  deriving (Show)
+  | EBuiltIn ([Value] -> Interpreter Value)
+  --deriving (Show)
 
 data Type =
     TInt
@@ -54,12 +56,14 @@ data Value =
   | VUnit
   | VFn Type [(Bool, Var)] Exp
   | VRef Loc
-  deriving (Show)
+  | VString String  -- only for stdout
+  --deriving (Show)
 
 type Loc = Integer
+type StaticCheckStore = Map Loc Type
+type StaticCheckEnv = Map Var (Loc, Bool)
 type Store = Map Loc Value
-type TypeStore = Map Loc Type
-type Env = Map Var (Loc, Bool)
+type Env = Map Var Loc
 type Var = String
 
 
@@ -68,8 +72,8 @@ type EvalState = ExceptT RuntimeExc (State Store)
 type Interpreter a = ReaderT Env EvalState a
 
 type StaticCheckExc = String
-type StaticCheckState = ExceptT StaticCheckExc (State TypeStore)
-type StaticChecker a = ReaderT Env StaticCheckState a
+type StaticCheckState = ExceptT StaticCheckExc (State StaticCheckStore)
+type StaticChecker a = ReaderT StaticCheckEnv StaticCheckState a
 
 
 mainFn :: Var

@@ -54,7 +54,6 @@ executable rustmm
   other-modules:       Interpreter.Defs
                        Interpreter.Eval
                        Interpreter.Parser
-                       Interpreter.Primitives
                        Interpreter.StaticChecker
   
   -- LANGUAGE extensions used by modules in this package.

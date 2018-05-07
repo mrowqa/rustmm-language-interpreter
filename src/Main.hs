@@ -24,7 +24,7 @@ runProgram fname src = do
     case parseCode fname src of
         Left err -> hPutStrLn stderr $ parseErrorPretty err
         Right prog -> do
-            putStrLn $ show prog
+            --putStrLn $ show prog
             case staticCheck prog of
                 Left err -> hPutStrLn stderr err
                 Right () -> do

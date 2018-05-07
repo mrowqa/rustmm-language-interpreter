@@ -12,7 +12,7 @@ import Text.Megaparsec.Char
 import qualified Text.Megaparsec.Char.Lexer as L
 
 import Interpreter.Defs
-import Interpreter.Primitives
+import Interpreter.Eval  -- for builtins
 
 
 -- based on following tutorial:
@@ -46,7 +46,7 @@ rword :: String -> Parser ()
 rword w = (lexeme . try) (string w *> notFollowedBy identifierChar)
 
 rws :: [String] -- list of reserved words
-rws = ["let","mut","if","else","while","true","false","fn","call","int","bool"] -- TODO more?
+rws = ["let","mut","if","else","while","true","false","fn","int","bool"] -- TODO more?
 
 identifier :: Parser String
 identifier = (lexeme . try) (p >>= check)
@@ -71,7 +71,7 @@ eExp :: Parser Exp
 eExp = do
       eLiteral
 --  <|> eIf
---  <|> eWhile
+  <|> eWhile
   <|> eFnCall  -- TODO does not work
   <|> parens eExp
 
@@ -115,6 +115,15 @@ optMut = try (rword "mut" *> pure True) <|> pure False
 optDeref :: Parser Bool
 optDeref = try (symbol "*" *> pure True) <|> pure False
 
+eWhile :: Parser Exp
+eWhile = do
+    rword "while"
+    cond <- eExp
+    body <- eBlock
+    let condClosure = ELitVal $ VFn (TFn [] TBool) [] cond
+    let bodyClosure = ELitVal $ VFn (TFn [] TUnit) [] body
+    return $ EFnCall (EVar False bltnWhileVar) [condClosure, bodyClosure]
+
 eLiteral :: Parser Exp
 eLiteral = do
       eInteger
@@ -155,8 +164,8 @@ eUnit = do
 
 eFnCall :: Parser Exp
 eFnCall = do
-    rword "call" -- TODO how to write the grammar without left recursion?
-    -- alternative: require call via variable
+    void $ symbol "@" -- avoiding left side recursion
+                      -- alternative: require call via variable
     fn <- eExp
     args <- parens $ eExp `sepBy` symbol ","
     return $ EFnCall fn args
@@ -247,6 +256,9 @@ eBlock = do
         shiftLets (x:xs) acc = case x of
             ELet mut name val _ -> reverse $ (ELet mut name val (EBlock $ shiftLets xs [])):acc
             _ -> shiftLets xs (x:acc)
+
+emptyBlock :: Exp
+emptyBlock = EBlock [ELitVal VUnit]
 
 
 langParser :: Parser Exp

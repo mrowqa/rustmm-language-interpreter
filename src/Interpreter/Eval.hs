@@ -1,166 +1,223 @@
 {-# Options -Wall #-}
+{-# LANGUAGE BangPatterns #-}
 
 module Interpreter.Eval (
     evalProgram,
+    builtInsRegister,
+    bltnWhileVar,
 ) where
 import Interpreter.Defs
---import Interpreter.Primitives
---import qualified Data.Map as Map
---import Control.Monad.Except
---import Control.Monad.State
---import Control.Monad.Reader
---import Control.Monad.Trans
+import qualified Data.Map as Map
+import Control.Monad.Except
+import Control.Monad.State
+import Control.Monad.Reader
+
 
 type EvalResult = (String, Maybe String) -- stdout, stderr
 
 evalProgram :: Exp -> EvalResult
-evalProgram _ = ("", Nothing) -- TODO
+evalProgram prog = let (result, endState) = runState (runExceptT (runReaderT (evalImpl prog) initEnv)) initStore in
+    let Just (VString stdout) = Map.lookup stdoutLoc endState in
+    case result of
+        Left stderr -> (stdout, Just stderr)
+        Right () -> (stdout, Nothing)
 
----- checks if variables are defined, mutability and types
---staticCheck :: Exp -> StaticCheckResult
---staticCheck prog = fst $ runState (runExceptT (runReaderT (staticCheckImpl prog) Map.empty)) Map.empty
+initEnv :: Env
+initEnv = Map.fromList [(stdoutVar, stdoutLoc), (nextIdVar, nextIdLoc)]
 
+initStore :: Store
+initStore = Map.fromList [(stdoutLoc, VString ""), (nextIdLoc, VInt 0)]
 
---nextId :: EvalState Integer
---nextId = do
---    m <- get
---    let k = case Map.lookup nextIdKey m of Just (VInt k') -> k'
---                                           Just _ -> error "unreachable"
---                                           Nothing -> 1
---    modify (Map.insert nextIdKey $ VInt $ k+1)
---    return k
---  where nextIdKey = 0
+stdoutVar :: Var
+stdoutVar = "@stdout@"
+stdoutLoc :: Loc
+stdoutLoc = (-2)
 
---staticCheckImpl :: Exp -> Interpreter ()
---staticCheckImpl (EBlock defs) = do
---    env <- initTopDefs defs
---    maybe_main <- withReaderT (Map.union env) (getVar mainFn)
---    case maybe_main of
---        Nothing -> throwError $ "Error: main function not defined"
---        Just (_,_,v) -> do
---            if typeOf v /= mainFnType
---                then throwError $ "Error: main function must have signature " ++ show mainFnType ++ " (found: " ++ show (typeOf v) ++ ")"
---                else do ts <- withReaderT (Map.union env) $ staticCheckMultipleExp defs
---                        if not (all (==TUnit) ts)  -- enforce calculation
---                            then error "unreachable"
---                            else return ()
---staticCheckImpl _ = error "unreachable"
-
---staticCheckSingleExp :: Exp -> Interpreter Type
---staticCheckSingleExp (ELet mut name exp' cont) = do
---    t <- staticCheckSingleExp exp'
---    l <- lift $ nextId
---    lift $ modify (Map.insert l $ defaultValueOf t)
---    withReaderT (Map.insert name (l, mut)) $ staticCheckSingleExp cont
-
---staticCheckSingleExp (EFnCall fn args) = do
---    TFn args_t ret_t <- staticCheckSingleExp fn
---    args_t' <- staticCheckMultipleExp args
---    if args_t == args_t'
---        then return ret_t
---        else throwError $ "Error: expected types " ++ (show args_t) ++ ", got: " ++ (show args_t')
-
---staticCheckSingleExp (EVar var) = do
---    maybe_var <- getVar var
---    case maybe_var of
---        Nothing -> throwError $ "Error: undefined variable " ++ var
---        Just (_,_,v) -> return $ typeOf v
-
---staticCheckSingleExp (ELitVal val) = do
---    case val of
---        VFn (TFn args_t ret_t) vars body -> do
---            args_env <- argsEnv vars args_t  -- TODO rehandle error to add info about position
---            ret_t' <- withReaderT (Map.union args_env) $ staticCheckSingleExp body
---            if ret_t == ret_t' then return ret_t
---                               else throwError $ "Error: function declares to return " ++ show ret_t ++ ", but last expression is of type " ++ show ret_t'
---        _ -> return $ typeOf val
---  where argsEnv :: [(Bool, Var)] -> [Type] -> Interpreter Env
---        argsEnv [] [] = return Map.empty
---        argsEnv ((mut, name):vs) (t:ts) = do
---            l <- lift $ nextId
---            lift $ modify (Map.insert l $ defaultValueOf t)
---            env <- argsEnv vs ts
---            case Map.lookup name env of
---                Just _ ->  throwError $ "Error: multiple arguments with the same name " ++ name
---                Nothing -> return $ Map.insert name (l, mut) env
---        argsEnv _ _ = error "unreachable"
-
---staticCheckSingleExp (ETakeRef mut var) = do
---    maybe_var <- getVar var
---    case maybe_var of
---        Nothing -> throwError $ "Error: undefined variable " ++ var
---        Just (_,m,v) -> do
---            case typeOf v of
---                TRef _ _ -> throwError $ "Error: reference to reference is forbidden (variable " ++ var ++ ")"
---                TFn _ _ -> throwError $ "Error: reference to function is forbidden (variable " ++ var ++ ")"
---                TUnit -> throwError $ "Error: reference to unit is forbidden (variable " ++ var ++ ")"
---                t -> if m == False && mut == True
---                        then throwError $ "Error: cannot take mutable reference to immutable variable " ++ var
---                        else return t
+nextIdVar :: Var
+nextIdVar = "@nextId@"
+nextIdLoc :: Loc
+nextIdLoc = (-1)
 
 
---staticCheckSingleExp (EBlock exps) = do
---    ts <- staticCheckMultipleExp exps
---    --error $ show exps ++ " | " ++ show ts -- TODO remove me
---    if not $ all (==TUnit) (init ts)  -- enforcement of type checking
---        then throwError $ "Error: all but last expression in block must return unit" -- ++ show exps ++ " | " ++ show ts -- TODO remove me
---        else return $ last ts
-
---staticCheckSingleExp (EAssign var exp') = do
---    t <- staticCheckSingleExp exp'
---    maybe_var <- getVar var
---    case maybe_var of
---        Nothing -> throwError $ "Error: undefined variable " ++ var
---        Just (_,False,_) -> throwError $ "Error: variable " ++ var ++ " is immutable" -- TODO make exception for references!
---        Just (_,_,v) -> do
---            if t /= typeOf v  -- TODO coercing mutable reference to immutable
---                then throwError $ "Error: variable " ++ var ++ " is of type " ++ (show $ typeOf v) ++ " and tried to assign value of type " ++ (show t)
---                else return TUnit
+nextId :: Interpreter Integer
+nextId = do
+    VInt k <- getValueAtLoc nextIdLoc
+    updateValueAtLoc nextIdLoc $ VInt (k+1)
+    return k
 
 
---getVar :: Var -> Interpreter (Maybe (Loc, Bool, Value))
---getVar var = do
---    maybe_loc <- asks (Map.lookup var)
---    case maybe_loc of  -- i couldn't apply here Maybe monad :(
---        Nothing -> return Nothing
---        Just (l, mut) -> do Just val <- lift $ gets (Map.lookup l)
---                            return $ Just (l, mut, val)
+evalImpl :: Exp -> Interpreter ()
+evalImpl (EBlock defs) = do
+    bltnEnv <- initBuiltIns
+    env <- withReaderT (Map.union bltnEnv) $ initTopDefs defs
+    (_,main) <- withReaderT (Map.union env) (getVar mainFn)
+    let VFn _ _ body = main
+    VUnit <- withReaderT (Map.union env) $ evalSingleExp body
+    return ()
+evalImpl _ = error "unreachable"
 
---staticCheckMultipleExp :: [Exp] -> Interpreter [Type]
---staticCheckMultipleExp [] = return []
---staticCheckMultipleExp (x:xs) = do
---    t <- staticCheckSingleExp x
---    ts <- staticCheckMultipleExp xs
---    return (t:ts)
+initBuiltIns :: Interpreter Env
+initBuiltIns = helper builtInsRegister
+  where helper :: [(Var, Value)] -> Interpreter Env
+        helper [] = ask
+        helper ((name, val):vs) = do
+            l <- nextId
+            updateValueAtLoc l val
+            env <- helper vs
+            return $ Map.insert name l env
 
 
---initTopDefs :: [Exp] -> Interpreter Env
---initTopDefs [] = return Map.empty
---initTopDefs (x:xs) = do
---    let (ELet mut name (ELitVal val) _) = x
---    l <- lift $ nextId
---    lift $ modify (Map.insert l val)
---    env <- initTopDefs xs
---    case Map.lookup name env of
---        Just _ ->  throwError $ "Error: function named " ++ name ++ " already defined!"
---        Nothing -> return $ Map.insert name (l, mut) env
+initTopDefs :: [Exp] -> Interpreter Env
+initTopDefs [] = ask
+initTopDefs (x:xs) = do
+    let (ELet _ name (ELitVal val) _) = x
+    l <- nextId
+    updateValueAtLoc l val
+    env <- initTopDefs xs
+    return $ Map.insert name l env
 
---typeOf :: Value -> Type
---typeOf (VInt _) = TInt
---typeOf (VBool _) = TBool
---typeOf VUnit = TUnit
---typeOf (VFn t _ _) = t
---typeOf (VRef _) = undefined -- TODO hmm...
 
---defaultValueOf :: Type -> Value
---defaultValueOf TInt = VInt 0
---defaultValueOf TBool = VBool True
---defaultValueOf TUnit = VUnit
---defaultValueOf _t@(TFn _ _) = undefined -- VFn _t [] emptyBlock -- TODO done wrong :( -- TODO check what is used by static checker
---defaultValueOf (TRef _ _) = undefined -- TODO hmm..
+evalSingleExp :: Exp -> Interpreter Value
+evalSingleExp (ELet _ name exp' cont) = do
+    val <- evalSingleExp exp'
+    l <- nextId
+    updateValueAtLoc l val
+    withReaderT (Map.insert name l) $ evalSingleExp cont
 
----- TODO impl show for Type
----- TODO impl show for Exp
----- TODO impl show for Value
----- TODO tests (* for each error msg)
+evalSingleExp (EFnCall fn args) = do
+    fnVal <- evalSingleExp fn
+    argsVals <- evalMultipleExp args
+    let VFn _ argsMutNames body = fnVal
+    let (_, argsNames) = unzip argsMutNames
+    env <- argsEnv argsNames argsVals
+    case body of
+        EBuiltIn impl -> impl argsVals
+        _ -> withReaderT (Map.union env) $ evalSingleExp body
+  where argsEnv :: [Var] -> [Value] -> Interpreter Env
+        argsEnv [] [] = return Map.empty
+        argsEnv (n:ns) (v:vs) = do
+            l <- nextId
+            updateValueAtLoc l v
+            env <- argsEnv ns vs
+            return $ Map.insert n l env
+        argsEnv _ _ = error "unreachable"
+
+evalSingleExp (EVar deref var) = do
+    (_, val) <- getVar var
+    case (deref, val) of
+        (True, VRef l) -> getValueAtLoc l
+        (True, _) -> error "unreachable"
+        (False, _) -> return val
+
+evalSingleExp (ELitVal val) = return val
+
+evalSingleExp (ETakeRef _ var) = do
+    (l, _) <- getVar var
+    return $ VRef l
+
+evalSingleExp (EBlock exps) = do
+    !vs <- evalMultipleExp exps  -- enforcing evaluation of all expressions
+    return $ last vs
+
+evalSingleExp (EAssign deref var exp') = do
+    newVal <- evalSingleExp exp'
+    (l, oldVal) <- getVar var
+    case (deref, oldVal) of
+        (True, VRef l') -> updateValueAtLoc l' newVal
+        (True, _) -> error "unreachable"
+        (False, _) -> updateValueAtLoc l newVal
+    return VUnit
+
+evalSingleExp (EBuiltIn _) = error "unreachable"
+
+
+evalMultipleExp :: [Exp] -> Interpreter [Value]
+evalMultipleExp [] = return []
+evalMultipleExp (x:xs) = do
+    v <- evalSingleExp x
+    vs <- evalMultipleExp xs
+    return (v:vs)
+
+
+getVar :: Var -> Interpreter (Loc, Value)
+getVar var = do
+    Just l <- asks (Map.lookup var)
+    val <- getValueAtLoc l
+    return (l, val)
+
+getValueAtLoc :: Loc -> Interpreter Value
+getValueAtLoc l = do
+    Just val <- lift $ gets (Map.lookup l)
+    return val
+
+-- not used
+--updateVar :: Var -> Value -> Interpreter ()
+--updateVar var val = do
+--    (l,_) <- getVar var
+--    updateValueAtLoc l val
+
+updateValueAtLoc :: Loc -> Value -> Interpreter ()
+updateValueAtLoc l val = do
+    lift $ modify (Map.insert l val)
+    return ()
+
+
+-- TODO impl show for Type
+-- TODO impl show for Exp
+-- TODO impl show for Value
+
+--------------------------------------------------------
+------------ built ins ---------------------------------
+--------------------------------------------------------
+
+builtInsRegister :: [(Var, Value)]
+builtInsRegister = [
+        ("printInt", printInt),
+        ("printBool", printBool),
+        (bltnWhileVar, bltnWhile)
+    ]
+
+bltnWhileVar :: Var
+bltnWhileVar = "_bltn_@while"
+
+--bltnIf :: Exp
+--bltnIf = EVar "_bltn_@if"
+
+--bltnNeg :: Exp
+--bltnNeg = EVar "_bltn_@neg"
+
+--bltnMul :: Exp
+--bltnMul = EVar "_bltn_@mul"
+
+--bltnDiv :: Exp
+--bltnDiv = EVar "_bltn_@div"
+
+--bltnAdd :: Exp
+--bltnAdd = EVar "_bltn_@add"
+
+--bltnSub :: Exp
+--bltnSub = EVar "_bltn_@sub"
+
+bltnWhile :: Value
+bltnWhile = VFn (TFn [TFn [] TBool, TFn [] TUnit] TUnit) [(False, "cond"), (False, "body")]
+    (EBuiltIn (\[VFn _ _ cond, VFn _ _ body] -> while cond body))
+  where while :: Exp -> Exp -> Interpreter Value
+        while cond body = do
+            VBool condVal <- evalSingleExp cond
+            if condVal
+                then do VUnit <- evalSingleExp body
+                        while cond body
+                else return VUnit
+
+printInt :: Value
+printInt = VFn (TFn [TInt] TUnit) [(False, "arg")]
+    (EBuiltIn (\[VInt arg] -> do VString stdout <- getValueAtLoc stdoutLoc
+                                 updateValueAtLoc stdoutLoc $ VString (stdout ++ show arg ++ "\n")
+                                 return VUnit))
+
+printBool :: Value
+printBool = VFn (TFn [TBool] TUnit) [(False, "arg")]
+    (EBuiltIn (\[VBool arg] -> do VString stdout <- getValueAtLoc stdoutLoc
+                                  updateValueAtLoc stdoutLoc $ VString (stdout ++ show arg ++ "\n")
+                                  return VUnit))
 
