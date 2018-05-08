@@ -47,7 +47,7 @@ rword :: String -> Parser ()
 rword w = (lexeme . try) (string w *> notFollowedBy identifierChar)
 
 rws :: [String] -- list of reserved words
-rws = ["let","mut","if","else","while","true","false","fn","int","bool"] -- TODO more?
+rws = ["let","mut","if","else","while","true","false","fn","int","bool"]
 
 identifier :: Parser String
 identifier = (lexeme . try) (p >>= check)

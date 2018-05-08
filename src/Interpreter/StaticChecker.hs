@@ -167,6 +167,5 @@ typeOf (VFn t _ _ _) = t
 typeOf (VRef _) = error "unreachable"  -- literal can't be VRef with internal reference
 typeOf (VString _) = error "unreachable"  -- used only for stdout during eval
 
--- TODO tests (* for each error msg)
 -- TODO check variable naming convention!
 

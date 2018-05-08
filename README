@@ -1,9 +1,24 @@
-TODO
+Rust-- (rustmm)
 
-// lang
-// parser
-// static checks
-// eval
-// ast, etc?
-// building on students?
+Language
+In the first place was meant to be subset of the Rust language
+(https://www.rust-lang.org/), but eventually it is a little bit different.
+Features: expression based, functions as values (can be arguments and returned
+from functions), closures which remember their environment, references,
+mutability
+
+Parser
+Written in MegaParsec (https://github.com/mrkkrp/megaparsec).
+
+Static Checks
+Types, mutability, taking refs.
+
+AST & Eval
+I tried to keep AST minimalistic. All operators and while are desugarated
+to calls to builtins. I don't support generics, so if is actually present
+in AST since I need to check if both branches returns same type.
+
+Building (including students machine)
+Locally - with cabal.
+On students - I'm having problems.
 
