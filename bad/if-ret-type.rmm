@@ -1,0 +1,9 @@
+fn main() {
+    if 1 < 4 {
+        42
+    }
+    else {  // no else means returning unit
+        false
+    }
+}
+

@@ -1,0 +1,11 @@
+fn main() {
+    let mut x = 42;
+    while x < 420 {
+        x = (x + 1) * 2;
+        if x / 5 == 0 {
+            x = (500 - x) / 10;
+        }
+    };
+    @printInt(x);
+}
+

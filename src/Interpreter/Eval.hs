@@ -10,6 +10,7 @@ module Interpreter.Eval (
     bltnNegVar,
     bltnMulVar,
     bltnDivVar,
+    bltnModVar,
     bltnAddVar,
     bltnSubVar,
     bltnLtVar,
@@ -66,8 +67,9 @@ evalImpl :: Exp -> Interpreter ()
 evalImpl (EBlock defs) = do
     bltnEnv <- initBuiltIns
     env <- withReaderT (Map.union bltnEnv) $ initTopDefs defs
+    withReaderT (Map.union env) $ updateTopDefsEnv defs
     (_,main) <- withReaderT (Map.union env) (getVar mainFn)
-    let VFn _ _ body = main
+    let VFn _ _ body _ = main
     VUnit <- withReaderT (Map.union env) $ evalSingleExp body
     return ()
 evalImpl _ = error "unreachable"
@@ -92,6 +94,17 @@ initTopDefs (x:xs) = do
     env <- initTopDefs xs
     return $ Map.insert name l env
 
+updateTopDefsEnv :: [Exp] -> Interpreter ()
+updateTopDefsEnv [] = return ()
+updateTopDefsEnv (x:xs) = do
+    env <- ask
+    let (ELet _ name _ _) = x
+    (l, v) <- getVar name
+    let VFn t args body _ = v
+    let v' = VFn t args body env
+    updateValueAtLoc l v'
+    updateTopDefsEnv xs
+
 
 evalSingleExp :: Exp -> Interpreter Value
 evalSingleExp (ELet _ name exp' cont) = do
@@ -103,12 +116,12 @@ evalSingleExp (ELet _ name exp' cont) = do
 evalSingleExp (EFnCall fn args) = do
     fnVal <- evalSingleExp fn
     argsVals <- evalMultipleExp args
-    let VFn _ argsMutNames body = fnVal
+    let VFn _ argsMutNames body fnEnv = fnVal
     let (_, argsNames) = unzip argsMutNames
     env <- argsEnv argsNames argsVals
     case body of
         EBuiltIn impl -> impl argsVals
-        _ -> withReaderT (Map.union env) $ evalSingleExp body
+        _ -> withReaderT (\_ -> Map.union env fnEnv) $ evalSingleExp body
   where argsEnv :: [Var] -> [Value] -> Interpreter Env
         argsEnv [] [] = return Map.empty
         argsEnv (n:ns) (v:vs) = do
@@ -125,7 +138,11 @@ evalSingleExp (EVar deref var) = do
         (True, _) -> error "unreachable"
         (False, _) -> return val
 
-evalSingleExp (ELitVal val) = return val
+evalSingleExp (ELitVal val) = do
+    env <- ask
+    return $ case val of
+            VFn t args body _ -> VFn t args body env
+            _ -> val
 
 evalSingleExp (ETakeRef _ var) = do
     (l, _) <- getVar var
@@ -198,6 +215,7 @@ builtInsRegister = [
         (bltnNegVar, bltnNeg),
         (bltnMulVar, bltnMul),
         (bltnDivVar, bltnDiv),
+        (bltnModVar, bltnMod),
         (bltnAddVar, bltnAdd),
         (bltnSubVar, bltnSub),
         (bltnLtVar, bltnLt),
@@ -229,6 +247,9 @@ bltnMulVar = "_bltn_@mul"
 
 bltnDivVar :: Var
 bltnDivVar = "_bltn_@div"
+
+bltnModVar :: Var
+bltnModVar = "_bltn_@mod"
 
 bltnAddVar :: Var
 bltnAddVar = "_bltn_@add"
@@ -266,7 +287,7 @@ bltnOrVar = "_bltn_@or"
 
 bltnWhile :: Value
 bltnWhile = VFn (TFn [TFn [] TBool, TFn [] TUnit] TUnit) [(False, "cond"), (False, "body")]
-    (EBuiltIn (\[VFn _ _ cond, VFn _ _ body] -> while cond body))
+    (EBuiltIn (\[VFn _ _ cond _, VFn _ _ body _] -> while cond body)) Map.empty
   where while :: Exp -> Exp -> Interpreter Value
         while cond body = do
             VBool condVal <- evalSingleExp cond
@@ -279,69 +300,88 @@ printInt :: Value
 printInt = VFn (TFn [TInt] TUnit) [(False, "arg")]
     (EBuiltIn (\[VInt arg] -> do VString stdout <- getValueAtLoc stdoutLoc
                                  updateValueAtLoc stdoutLoc $ VString (stdout ++ show arg ++ "\n")
-                                 return VUnit))
+                                 return VUnit)) Map.empty
 
 printBool :: Value
 printBool = VFn (TFn [TBool] TUnit) [(False, "arg")]
     (EBuiltIn (\[VBool arg] -> do VString stdout <- getValueAtLoc stdoutLoc
                                   updateValueAtLoc stdoutLoc $ VString (stdout ++ show arg ++ "\n")
-                                  return VUnit))
+                                  return VUnit)) Map.empty
 
 bltnNeg :: Value
 bltnNeg = VFn (TFn [TInt] TInt) [(False, "arg")]
-    (EBuiltIn (\[VInt arg] -> return $ VInt (-arg)))
+    (EBuiltIn (\[VInt arg] -> return $ VInt (-arg))) Map.empty
 
 bltnMul :: Value
 bltnMul = VFn (TFn [TInt, TInt] TInt) [(False, "n0"), (False, "n1")]
-    (EBuiltIn (\[VInt n0, VInt n1] -> return $ VInt (n0 * n1)))
+    (EBuiltIn (\[VInt n0, VInt n1] -> return $ VInt (n0 * n1))) Map.empty
+
 
 bltnDiv :: Value
 bltnDiv = VFn (TFn [TInt, TInt] TInt) [(False, "n0"), (False, "n1")]
     (EBuiltIn (\[VInt n0, VInt n1] -> if n1 == 0
                                           then throwError "Error: division by zero"
-                                          else return $ VInt (n0 `div` n1)))
+                                          else return $ VInt (n0 `div` n1))) Map.empty
+
+bltnMod :: Value
+bltnMod = VFn (TFn [TInt, TInt] TInt) [(False, "n0"), (False, "n1")]
+    (EBuiltIn (\[VInt n0, VInt n1] -> if n1 == 0
+                                          then throwError "Error: division by zero"
+                                          else return $ VInt (n0 `mod` n1))) Map.empty
+
 
 bltnAdd :: Value
 bltnAdd = VFn (TFn [TInt, TInt] TInt) [(False, "n0"), (False, "n1")]
-    (EBuiltIn (\[VInt n0, VInt n1] -> return $ VInt (n0 + n1)))
+    (EBuiltIn (\[VInt n0, VInt n1] -> return $ VInt (n0 + n1))) Map.empty
+
 
 bltnSub :: Value
 bltnSub = VFn (TFn [TInt, TInt] TInt) [(False, "n0"), (False, "n1")]
-    (EBuiltIn (\[VInt n0, VInt n1] -> return $ VInt (n0 - n1)))
+    (EBuiltIn (\[VInt n0, VInt n1] -> return $ VInt (n0 - n1))) Map.empty
+
 
 bltnLt :: Value
 bltnLt = VFn (TFn [TInt, TInt] TBool) [(False, "n0"), (False, "n1")]
-    (EBuiltIn (\[VInt n0, VInt n1] -> return $ VBool (n0 < n1)))
+    (EBuiltIn (\[VInt n0, VInt n1] -> return $ VBool (n0 < n1))) Map.empty
+
 
 bltnLe :: Value
 bltnLe = VFn (TFn [TInt, TInt] TBool) [(False, "n0"), (False, "n1")]
-    (EBuiltIn (\[VInt n0, VInt n1] -> return $ VBool (n0 <= n1)))
+    (EBuiltIn (\[VInt n0, VInt n1] -> return $ VBool (n0 <= n1))) Map.empty
+
 
 bltnGt :: Value
 bltnGt = VFn (TFn [TInt, TInt] TBool) [(False, "n0"), (False, "n1")]
-    (EBuiltIn (\[VInt n0, VInt n1] -> return $ VBool (n0 > n1)))
+    (EBuiltIn (\[VInt n0, VInt n1] -> return $ VBool (n0 > n1))) Map.empty
+
 
 bltnGe :: Value
 bltnGe = VFn (TFn [TInt, TInt] TBool) [(False, "n0"), (False, "n1")]
-    (EBuiltIn (\[VInt n0, VInt n1] -> return $ VBool (n0 >= n1)))
+    (EBuiltIn (\[VInt n0, VInt n1] -> return $ VBool (n0 >= n1))) Map.empty
+
 
 bltnEq :: Value
 bltnEq = VFn (TFn [TInt, TInt] TBool) [(False, "n0"), (False, "n1")]
-    (EBuiltIn (\[VInt n0, VInt n1] -> return $ VBool (n0 == n1)))
+    (EBuiltIn (\[VInt n0, VInt n1] -> return $ VBool (n0 == n1))) Map.empty
+
 
 bltnNe :: Value
 bltnNe = VFn (TFn [TInt, TInt] TBool) [(False, "n0"), (False, "n1")]
-    (EBuiltIn (\[VInt n0, VInt n1] -> return $ VBool (n0 /= n1)))
+    (EBuiltIn (\[VInt n0, VInt n1] -> return $ VBool (n0 /= n1))) Map.empty
+
 
 bltnNot :: Value
 bltnNot = VFn (TFn [TBool] TBool) [(False, "p")]
-    (EBuiltIn (\[VBool p] -> return $ VBool (not p)))
+    (EBuiltIn (\[VBool p] -> return $ VBool (not p))) Map.empty
+
 
 bltnAnd :: Value
 bltnAnd = VFn (TFn [TBool, TBool] TBool) [(False, "p0"), (False, "p1")]
-    (EBuiltIn (\[VBool p0, VBool p1] -> return $ VBool (p0 && p1)))
+    (EBuiltIn (\[VBool p0, VBool p1] -> return $ VBool (p0 && p1))) Map.empty
+
 
 bltnOr :: Value
 bltnOr = VFn (TFn [TBool, TBool] TBool) [(False, "p0"), (False, "p1")]
-    (EBuiltIn (\[VBool p0, VBool p1] -> return $ VBool (p0 || p1)))
+    (EBuiltIn (\[VBool p0, VBool p1] -> return $ VBool (p0 || p1))) Map.empty
+
 

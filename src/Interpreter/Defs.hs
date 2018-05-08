@@ -54,7 +54,7 @@ data Value =
     VInt Integer
   | VBool Bool
   | VUnit
-  | VFn Type [(Bool, Var)] Exp
+  | VFn Type [(Bool, Var)] Exp Env
   | VRef Loc
   | VString String  -- only for stdout
   --deriving (Show)

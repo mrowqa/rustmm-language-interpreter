@@ -6,6 +6,7 @@ module Interpreter.Parser (
 ) where
 import Control.Monad (void)
 import Data.Void
+import qualified Data.Map as Map
 import Text.Megaparsec
 import Text.Megaparsec.Char
 import Text.Megaparsec.Expr
@@ -76,6 +77,7 @@ eTerm = do
   <|> eIf
   <|> eWhile
   <|> eFnCall
+  <|> eBlock
   <|> parens eExp
 
 hOperators :: [[Operator Parser Exp]]
@@ -83,7 +85,8 @@ hOperators = [[
         prefixOp "-"  bltnNegVar
     ], [
         infixLOp "*"  bltnMulVar,
-        infixLOp "/"  bltnDivVar
+        infixLOp "/"  bltnDivVar,
+        infixLOp "%"  bltnModVar
     ], [
         infixLOp "+"  bltnAddVar,
         infixLOp "-"  bltnSubVar
@@ -126,8 +129,8 @@ eWhile = do
     rword "while"
     cond <- eExp
     body <- eBlock
-    let condClosure = ELitVal $ VFn (TFn [] TBool) [] cond
-    let bodyClosure = ELitVal $ VFn (TFn [] TUnit) [] body
+    let condClosure = ELitVal $ VFn (TFn [] TBool) [] cond Map.empty
+    let bodyClosure = ELitVal $ VFn (TFn [] TUnit) [] body Map.empty
     -- return $ EFnCall (EVar False bltnWhileVar) [condClosure, bodyClosure]
     return $ bltnBinary bltnWhileVar condClosure bodyClosure
 
@@ -193,7 +196,7 @@ eClosure = do
     -- version with return type inference - not supported
     retType <- try (symbol "->" *> hType) <|> pure TUnit
     block <- eBlock
-    return $ ELitVal $ VFn (TFn types retType) mut_names block
+    return $ ELitVal $ VFn (TFn types retType) mut_names block Map.empty
 
 eAssign :: Parser Exp
 eAssign = do
@@ -212,7 +215,7 @@ sFnDef = do
     let (mut_names, types) = unzip args
     retType <- try (symbol "->" *> hType) <|> pure TUnit
     block <- eBlock
-    let fn = ELitVal $ VFn (TFn types retType) mut_names block
+    let fn = ELitVal $ VFn (TFn types retType) mut_names block Map.empty  -- environ is filled during runtime
     return $ ELet mut name fn emptyBlock
 
 hFnDefArgs :: Parser [((Bool, Var), Type)]

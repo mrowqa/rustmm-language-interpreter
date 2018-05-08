@@ -1,0 +1,25 @@
+// pretty errors -- check bad directory.
+
+fn main() {
+    let mut x = 42;
+    let y = &x;
+    // *y = 44; // y is immutable reference
+    let y = &mut x;
+    *y = 44;
+    @printInt(x);
+
+    let xx = 1579;
+    let mut i = 5;
+    let mut r = &xx;
+    while i > 0 {
+        r = if i % 2 == 0 {  // if is a expression and returns a reference
+            &xx              // note: only let are statements
+        }
+        else {
+            &i
+        };
+        @printInt(*r);
+        i = i - 1;
+    }
+}
+

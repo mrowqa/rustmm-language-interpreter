@@ -1,0 +1,9 @@
+fn foo(x: int) -> int {
+    x + 4
+}
+
+fn main() {
+    let x = @foo(true);  // only first error is raported
+    let y = @foo(5, 2);  // but this is an error, too
+}
+

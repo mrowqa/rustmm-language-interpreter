@@ -1,0 +1,46 @@
+fn variableNames() {
+    let mut x = 1;
+    {
+        let mut x = 2;
+        @printInt(x);
+    };
+    @printInt(x);
+}
+
+// division by 0 shown in bad examples
+
+fn functionJuggling() {
+    fn argPrinter(foo: fn(int) -> int) -> fn(int) -> int {
+        |x: int| -> int {
+            @printInt(x);
+            @foo(x)
+        }
+    };
+
+    let decorated = @argPrinter(|x: int| -> int { x + 1 });
+    @printInt(@decorated(41));
+    // can alse be as a one expression, but this way it is way more readable
+}
+
+fn counter() {
+    fn makeCnt() -> fn() -> int {
+        let mut cnt = -1;
+        || -> int {
+            cnt = cnt + 1;
+            cnt
+        }
+    };
+
+    let cnt1 = @makeCnt();
+    let cnt2 = @makeCnt();
+    while @cnt1() < 5 {};
+    @printInt(@cnt1());
+    @printInt(@cnt2());
+}
+
+fn main() {
+    @variableNames();
+    @functionJuggling();
+    @counter();
+}
+

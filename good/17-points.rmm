@@ -1,0 +1,3 @@
+fn main() {}
+// take a look at bad examples - most of them are static check errors
+

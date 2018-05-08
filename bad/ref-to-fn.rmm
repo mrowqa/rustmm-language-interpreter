@@ -1,0 +1,5 @@
+fn main() {
+    let x = &main;
+    // same for unit () and references (no nesting allowed!)
+}
+

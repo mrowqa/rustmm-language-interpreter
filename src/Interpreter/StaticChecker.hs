@@ -85,7 +85,7 @@ checkSingleExp (EVar deref var) = do
 
 checkSingleExp (ELitVal val) = do
     case val of
-        VFn valType@(TFn args_t ret_t) vars body -> do
+        VFn valType@(TFn args_t ret_t) vars body _ -> do
             args_env <- argsEnv vars args_t  -- TODO rehandle error to add info about position
             ret_t' <- withReaderT (Map.union args_env) $ checkSingleExp body
             if ret_t == ret_t' then return valType
@@ -119,20 +119,18 @@ checkSingleExp (ETakeRef mut var) = do
 checkSingleExp (EBlock exps) = do
     ts <- checkMultipleExp exps
     if not $ all (==TUnit) (init ts)  -- enforcement of type checking
-        then throwError $ "Error: all but last expression in block must return unit"
+        then throwError $ "Error: all but last expression in block must return unit; did you forget to check value of some expression?"
         else return $ last ts
 
 checkSingleExp (EAssign deref var exp') = do
     t <- checkSingleExp exp'
     maybe_var <- getVar var
-    case maybe_var of
-        Nothing -> throwError $ "Error: undefined variable " ++ var
-        Just (_,False,_) -> throwError $ "Error: variable " ++ var ++ " is immutable"  -- TODO allow immutable refs to mutable vars
-        Just (_,_,t') -> do
-            case (deref, t') of
-                (True, TRef True t'') | t == t'' -> return TUnit
-                (False, _) | t == t' -> return TUnit
-                _ -> throwError $ "Error: variable " ++ var ++ " is of type " ++ show t' ++ " and tried to assign value of type " ++ show t ++ (if deref then " (while derefencing the variable)" else "")
+    case (deref, maybe_var) of
+        (_, Nothing) -> throwError $ "Error: undefined variable " ++ var
+        (False, Just (_, False, _)) -> throwError $ "Error: variable " ++ var ++ " is immutable"
+        (False, Just (_, _, t')) | t == t' -> return TUnit
+        (True, Just (_, _, TRef True t'')) | t == t'' -> return TUnit
+        (_, Just (_, _, t')) -> throwError $ "Error: variable " ++ var ++ " is of type " ++ show t' ++ " and tried to assign value of type " ++ show t ++ (if deref then " (while derefencing the variable)" else "")
 
 checkSingleExp (EBuiltIn _) = error "unreachable"
 
@@ -165,7 +163,7 @@ typeOf :: Value -> Type
 typeOf (VInt _) = TInt
 typeOf (VBool _) = TBool
 typeOf VUnit = TUnit
-typeOf (VFn t _ _) = t
+typeOf (VFn t _ _ _) = t
 typeOf (VRef _) = error "unreachable"  -- literal can't be VRef with internal reference
 typeOf (VString _) = error "unreachable"  -- used only for stdout during eval
 

@@ -1,0 +1,6 @@
+fn foo(x: int, x: int) -> bool {
+    x == x
+}
+
+fn main() {}
+

@@ -1,0 +1,6 @@
+fn foo() -> int {
+    true
+}
+
+fn main() {}
+

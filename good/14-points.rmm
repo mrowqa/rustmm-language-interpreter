@@ -1,0 +1,19 @@
+fn mrrr(x: &mut int, mut y: bool) {
+    *x = *x + 1;
+    y = !y;
+}
+
+fn main() {
+    let mut a = 419;
+    let mut b = false;
+    @printInt(a);
+    @printBool(b);
+
+    @mrrr(&mut a, b);  // a passed by reference, b by value
+
+    @printInt(a);
+    @printBool(b);
+
+    // if, while, recursion, arithmetic, comparison - shown in previous examples
+}
+

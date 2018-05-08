@@ -1,0 +1,4 @@
+fn foo() {}
+fn foo(x: int) {} // again
+fn main() {}
+
