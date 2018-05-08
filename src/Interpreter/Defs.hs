@@ -21,7 +21,6 @@ module Interpreter.Defs (
     mainFnType,
 ) where
 import Data.Map (Map)
---import qualified Data.Map as Map
 import Control.Monad.State
 import Control.Monad.Except
 import Control.Monad.Reader
@@ -40,6 +39,7 @@ data Exp =
   | EBlock [Exp]
   | EAssign Bool Var Exp
   | EBuiltIn ([Value] -> Interpreter Value)
+  | EIf Exp Exp Exp  -- can't be builtin without generics if we want to be expression based
   --deriving (Show)
 
 data Type =

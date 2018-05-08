@@ -5,6 +5,22 @@ module Interpreter.Eval (
     evalProgram,
     builtInsRegister,
     bltnWhileVar,
+    bltnUnary,
+    bltnBinary,
+    bltnNegVar,
+    bltnMulVar,
+    bltnDivVar,
+    bltnAddVar,
+    bltnSubVar,
+    bltnLtVar,
+    bltnLeVar,
+    bltnGtVar,
+    bltnGeVar,
+    bltnEqVar,
+    bltnNeVar,
+    bltnNotVar,
+    bltnAndVar,
+    bltnOrVar,
 ) where
 import Interpreter.Defs
 import qualified Data.Map as Map
@@ -130,6 +146,10 @@ evalSingleExp (EAssign deref var exp') = do
 
 evalSingleExp (EBuiltIn _) = error "unreachable"
 
+evalSingleExp (EIf cond brTrue brFalse) = do
+    VBool condVal <- evalSingleExp cond
+    evalSingleExp $ if condVal then brTrue else brFalse
+
 
 evalMultipleExp :: [Exp] -> Interpreter [Value]
 evalMultipleExp [] = return []
@@ -174,29 +194,75 @@ builtInsRegister :: [(Var, Value)]
 builtInsRegister = [
         ("printInt", printInt),
         ("printBool", printBool),
-        (bltnWhileVar, bltnWhile)
+        (bltnWhileVar, bltnWhile),
+        (bltnNegVar, bltnNeg),
+        (bltnMulVar, bltnMul),
+        (bltnDivVar, bltnDiv),
+        (bltnAddVar, bltnAdd),
+        (bltnSubVar, bltnSub),
+        (bltnLtVar, bltnLt),
+        (bltnLeVar, bltnLe),
+        (bltnGtVar, bltnGt),
+        (bltnGeVar, bltnGe),
+        (bltnEqVar, bltnEq),
+        (bltnNeVar, bltnNe),
+        (bltnNotVar, bltnNot),
+        (bltnAndVar, bltnAnd),
+        (bltnOrVar, bltnOr)
     ]
+
+bltnUnary :: Var -> Exp -> Exp
+bltnUnary opVar exp' = EFnCall (EVar False opVar) [exp']
+
+bltnBinary :: Var -> Exp -> Exp -> Exp
+bltnBinary opVar e0 e1 = EFnCall (EVar False opVar) [e0, e1]
+
 
 bltnWhileVar :: Var
 bltnWhileVar = "_bltn_@while"
 
---bltnIf :: Exp
---bltnIf = EVar "_bltn_@if"
+bltnNegVar :: Var
+bltnNegVar = "_bltn_@neg"
 
---bltnNeg :: Exp
---bltnNeg = EVar "_bltn_@neg"
+bltnMulVar :: Var
+bltnMulVar = "_bltn_@mul"
 
---bltnMul :: Exp
---bltnMul = EVar "_bltn_@mul"
+bltnDivVar :: Var
+bltnDivVar = "_bltn_@div"
 
---bltnDiv :: Exp
---bltnDiv = EVar "_bltn_@div"
+bltnAddVar :: Var
+bltnAddVar = "_bltn_@add"
 
---bltnAdd :: Exp
---bltnAdd = EVar "_bltn_@add"
+bltnSubVar :: Var
+bltnSubVar = "_bltn_@sub"
 
---bltnSub :: Exp
---bltnSub = EVar "_bltn_@sub"
+bltnLtVar :: Var
+bltnLtVar = "_bltn_@lt"
+
+bltnLeVar :: Var
+bltnLeVar = "_bltn_@le"
+
+bltnGtVar :: Var
+bltnGtVar = "_bltn_@gt"
+
+bltnGeVar :: Var
+bltnGeVar = "_bltn_@ge"
+
+bltnEqVar :: Var
+bltnEqVar = "_bltn_@eq"
+
+bltnNeVar :: Var
+bltnNeVar = "_bltn_@ne"
+
+bltnNotVar :: Var
+bltnNotVar = "_bltn_@not"
+
+bltnAndVar :: Var
+bltnAndVar = "_bltn_@and"
+
+bltnOrVar :: Var
+bltnOrVar = "_bltn_@or"
+
 
 bltnWhile :: Value
 bltnWhile = VFn (TFn [TFn [] TBool, TFn [] TUnit] TUnit) [(False, "cond"), (False, "body")]
@@ -220,4 +286,62 @@ printBool = VFn (TFn [TBool] TUnit) [(False, "arg")]
     (EBuiltIn (\[VBool arg] -> do VString stdout <- getValueAtLoc stdoutLoc
                                   updateValueAtLoc stdoutLoc $ VString (stdout ++ show arg ++ "\n")
                                   return VUnit))
+
+bltnNeg :: Value
+bltnNeg = VFn (TFn [TInt] TInt) [(False, "arg")]
+    (EBuiltIn (\[VInt arg] -> return $ VInt (-arg)))
+
+bltnMul :: Value
+bltnMul = VFn (TFn [TInt, TInt] TInt) [(False, "n0"), (False, "n1")]
+    (EBuiltIn (\[VInt n0, VInt n1] -> return $ VInt (n0 * n1)))
+
+bltnDiv :: Value
+bltnDiv = VFn (TFn [TInt, TInt] TInt) [(False, "n0"), (False, "n1")]
+    (EBuiltIn (\[VInt n0, VInt n1] -> if n1 == 0
+                                          then throwError "Error: division by zero"
+                                          else return $ VInt (n0 `div` n1)))
+
+bltnAdd :: Value
+bltnAdd = VFn (TFn [TInt, TInt] TInt) [(False, "n0"), (False, "n1")]
+    (EBuiltIn (\[VInt n0, VInt n1] -> return $ VInt (n0 + n1)))
+
+bltnSub :: Value
+bltnSub = VFn (TFn [TInt, TInt] TInt) [(False, "n0"), (False, "n1")]
+    (EBuiltIn (\[VInt n0, VInt n1] -> return $ VInt (n0 - n1)))
+
+bltnLt :: Value
+bltnLt = VFn (TFn [TInt, TInt] TBool) [(False, "n0"), (False, "n1")]
+    (EBuiltIn (\[VInt n0, VInt n1] -> return $ VBool (n0 < n1)))
+
+bltnLe :: Value
+bltnLe = VFn (TFn [TInt, TInt] TBool) [(False, "n0"), (False, "n1")]
+    (EBuiltIn (\[VInt n0, VInt n1] -> return $ VBool (n0 <= n1)))
+
+bltnGt :: Value
+bltnGt = VFn (TFn [TInt, TInt] TBool) [(False, "n0"), (False, "n1")]
+    (EBuiltIn (\[VInt n0, VInt n1] -> return $ VBool (n0 > n1)))
+
+bltnGe :: Value
+bltnGe = VFn (TFn [TInt, TInt] TBool) [(False, "n0"), (False, "n1")]
+    (EBuiltIn (\[VInt n0, VInt n1] -> return $ VBool (n0 >= n1)))
+
+bltnEq :: Value
+bltnEq = VFn (TFn [TInt, TInt] TBool) [(False, "n0"), (False, "n1")]
+    (EBuiltIn (\[VInt n0, VInt n1] -> return $ VBool (n0 == n1)))
+
+bltnNe :: Value
+bltnNe = VFn (TFn [TInt, TInt] TBool) [(False, "n0"), (False, "n1")]
+    (EBuiltIn (\[VInt n0, VInt n1] -> return $ VBool (n0 /= n1)))
+
+bltnNot :: Value
+bltnNot = VFn (TFn [TBool] TBool) [(False, "p")]
+    (EBuiltIn (\[VBool p] -> return $ VBool (not p)))
+
+bltnAnd :: Value
+bltnAnd = VFn (TFn [TBool, TBool] TBool) [(False, "p0"), (False, "p1")]
+    (EBuiltIn (\[VBool p0, VBool p1] -> return $ VBool (p0 && p1)))
+
+bltnOr :: Value
+bltnOr = VFn (TFn [TBool, TBool] TBool) [(False, "p0"), (False, "p1")]
+    (EBuiltIn (\[VBool p0, VBool p1] -> return $ VBool (p0 || p1)))
 

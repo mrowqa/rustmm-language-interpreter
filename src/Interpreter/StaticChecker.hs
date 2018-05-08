@@ -136,6 +136,14 @@ checkSingleExp (EAssign deref var exp') = do
 
 checkSingleExp (EBuiltIn _) = error "unreachable"
 
+checkSingleExp (EIf cond brTrue brFalse) = do
+    [tCond, tBrTrue, tBrFalse] <- checkMultipleExp [cond, brTrue, brFalse]
+    if tCond /= TBool
+        then throwError $ "Error: if condition must be bool, got: " ++ show tCond
+        else if tBrTrue /= tBrFalse
+            then throwError $ "Error: both branches of if statement must be of the same type, got: " ++ show tBrTrue ++ " and " ++ show tBrFalse
+            else return tBrTrue
+
 
 getVar :: Var -> StaticChecker (Maybe (Loc, Bool, Type))
 getVar var = do

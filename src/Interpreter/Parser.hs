@@ -8,7 +8,7 @@ import Control.Monad (void)
 import Data.Void
 import Text.Megaparsec
 import Text.Megaparsec.Char
--- import Text.Megaparsec.Expr
+import Text.Megaparsec.Expr
 import qualified Text.Megaparsec.Char.Lexer as L
 
 import Interpreter.Defs
@@ -68,37 +68,43 @@ sExp = do
   <|> (pure $ ELitVal VUnit)
 
 eExp :: Parser Exp
-eExp = do
+eExp = makeExprParser eTerm hOperators
+
+eTerm :: Parser Exp
+eTerm = do
       eLiteral
---  <|> eIf
+  <|> eIf
   <|> eWhile
-  <|> eFnCall  -- TODO does not work
+  <|> eFnCall
   <|> parens eExp
 
---eExp :: Parser Exp
---eExp = makeExprParser eTerm hOperators
-
--- eTerm :: Parser Exp
--- eTerm = do
---       eLiteral
---   <|> eIf
---   <|> eWhile
---   <|> eFnCall
---   <|> parens eExp
-
--- hOperators :: [[Operator Parser Exp]]
--- hOperators = [[
---         Prefix (bltnNeg <$ symbol "-")
---     ], [
---         InfixL (bltnMul <$ symbol "*"),
---         InfixL (bltnDiv <$ symbol "/")
---     ], [
---         InfixL (bltnAdd <$ symbol "+"),
---         InfixL (bltnSub <$ symbol "-")
---     -- TODO
---     -- relations <=, <, ==, etc
---     -- logic && ||
---     ]]
+hOperators :: [[Operator Parser Exp]]
+hOperators = [[
+        prefixOp "-"  bltnNegVar
+    ], [
+        infixLOp "*"  bltnMulVar,
+        infixLOp "/"  bltnDivVar
+    ], [
+        infixLOp "+"  bltnAddVar,
+        infixLOp "-"  bltnSubVar
+    ], [
+        infixLOp "<=" bltnLeVar,
+        infixLOp "<"  bltnLtVar,
+        infixLOp ">=" bltnGeVar,
+        infixLOp ">"  bltnGtVar,
+        infixLOp "==" bltnEqVar,
+        infixLOp "!=" bltnNeVar
+    ], [
+        prefixOp "!"  bltnNotVar
+    ], [
+        infixLOp "&&" bltnAndVar
+    ], [
+        infixLOp "||" bltnOrVar
+    ]]
+  where prefixOp :: String -> Var -> Operator Parser Exp
+        prefixOp opSym opVar = Prefix (bltnUnary opVar <$ symbol opSym)
+        infixLOp :: String -> Var -> Operator Parser Exp
+        infixLOp opSym opVar = InfixL (bltnBinary opVar <$ symbol opSym)
 
 sExpLet :: Parser Exp
 sExpLet = do
@@ -122,7 +128,16 @@ eWhile = do
     body <- eBlock
     let condClosure = ELitVal $ VFn (TFn [] TBool) [] cond
     let bodyClosure = ELitVal $ VFn (TFn [] TUnit) [] body
-    return $ EFnCall (EVar False bltnWhileVar) [condClosure, bodyClosure]
+    -- return $ EFnCall (EVar False bltnWhileVar) [condClosure, bodyClosure]
+    return $ bltnBinary bltnWhileVar condClosure bodyClosure
+
+eIf :: Parser Exp
+eIf = do
+    rword "if"
+    cond <- eExp
+    brTrue <- eBlock
+    brFalse <- try (rword "else" *> eBlock) <|> return emptyBlock
+    return $ EIf cond brTrue brFalse
 
 eLiteral :: Parser Exp
 eLiteral = do
@@ -148,19 +163,6 @@ eUnit :: Parser Exp
 eUnit = do
     parens $ pure ()
     return $ ELitVal $ VUnit
-
--- eIf :: Parser Exp
--- eIf = do
---     rword "if"
---     cond <- eExp
---     brTrue <- eBlock
---     brFalse <- try (rword "else" *> eBlock) <|> return emptyBlock
---     return $ EFnCall bltnIf [cond, pack brTrue, pack brFalse]
---   where pack :: Exp -> Exp
---         pack body = ELitVal $ VFn t1 [] t2
-
--- eWhile :: Parser Exp
--- eWhile = undefined
 
 eFnCall :: Parser Exp
 eFnCall = do
@@ -274,7 +276,4 @@ parseCode :: String -> String -> ParseResult
 parseCode = parse langParser
 
 -- TODO positions!
--- TODO expressions (operators!)
--- TODO if, while
 
--- TODO interpreter :(
