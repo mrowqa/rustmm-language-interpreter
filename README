@@ -3,15 +3,17 @@ Rust-- (rustmm)
 Language
 In the first place was meant to be subset of the Rust language
 (https://www.rust-lang.org/), but eventually it is a little bit different.
+It is a mix of imperative language and functional language also including
+closure like in JavaScript or Python which remembers their own scopes.
 Features: expression based, functions as values (can be arguments and returned
 from functions), closures which remember their environment, references,
-mutability
+variables mutability (during static check).
 
 Parser
 Written in MegaParsec (https://github.com/mrkkrp/megaparsec).
 
 Static Checks
-Types, mutability, taking refs.
+Types, mutability, taking references.
 
 AST & Eval
 I tried to keep AST minimalistic. All operators and while are desugarated
